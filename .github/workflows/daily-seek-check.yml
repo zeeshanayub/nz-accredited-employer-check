@@ -1,0 +1,30 @@
+name: Daily SEEK Accreditation Check
+
+on:
+  schedule:
+    # Pakistan (PKT, UTC+5) has no daylight saving, so a single fixed
+    # UTC cron time always lands at 10:00 PKT.
+    - cron: '0 5 * * *'  # 10:00 PKT
+  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run SEEK check -> accreditation check -> email report
+        env:
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          REPORT_TO_EMAIL: ${{ secrets.REPORT_TO_EMAIL }}
+        run: python run_pipeline.py

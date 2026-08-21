@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Gmail OAuth secrets — never commit these
+credentials.json
+token.json
+
+# Personal report destination — never commit this
+report_to.txt
+
+# Generated output (personal job-search data, regenerated on each run)
+seek_snippets.txt
+seek_jobs.jsonl
+seek_accreditation_check.json
+seek_emails_eml/
+seek_emails_html/

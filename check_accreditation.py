@@ -1,6 +1,6 @@
 """
 Cross-check SEEK job listings (seek_jobs.jsonl) against the NZ Immigration
-Accredited Employer list, using main.py's check_employer_accredited().
+Accredited Employer list, using accredited_employer_api.check_employer_accredited().
 
 If a company name contains "Ltd" and isn't found, retries once with "Ltd"
 replaced by "Limited" (the immigration site's search wants the full form).
@@ -11,7 +11,7 @@ import os
 import re
 import time
 
-from main import check_employer_accredited
+from accredited_employer_api import check_employer_accredited
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(SCRIPT_DIR, "seek_jobs.jsonl")

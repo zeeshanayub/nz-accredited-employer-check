@@ -12,7 +12,12 @@ from email.mime.text import MIMEText
 
 from googleapiclient.errors import HttpError
 
-from check_seek_emails import SCRIPT_DIR, get_gmail_service, mark_as_read
+from check_seek_emails import (
+    PROCESSED_EMAILS_FILE,
+    SCRIPT_DIR,
+    get_gmail_service,
+    mark_as_read,
+)
 
 RESULTS_FILE = os.path.join(SCRIPT_DIR, "seek_accreditation_check.json")
 REPORT_TO_FILE = os.path.join(SCRIPT_DIR, "report_to.txt")
@@ -41,6 +46,13 @@ def load_results(results_file=RESULTS_FILE):
     if not os.path.exists(results_file):
         return []
     with open(results_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_processed_email_ids(file=PROCESSED_EMAILS_FILE):
+    if not os.path.exists(file):
+        return []
+    with open(file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -117,18 +129,27 @@ def send_email(service, mime_message):
 
 def main():
     results = load_results()
-    if not results:
+    # Every email check_seek_emails.py fetched this run, whether or not it
+    # contained any extractable job listings — all of them still need to be
+    # marked read, not just the ones that ended up in the accreditation report.
+    email_ids = sorted(
+        set(load_processed_email_ids()) | {r["email_id"] for r in results if r.get("email_id")}
+    )
+
+    if not results and not email_ids:
         print("No accreditation results to report.")
         return
 
-    report_to = get_report_to()
     service = get_gmail_service()
 
-    mime_message = build_report_email(results, report_to)
-    sent = send_email(service, mime_message)
-    print(f"Report emailed (message id: {sent['id']})")
+    if results:
+        report_to = get_report_to()
+        mime_message = build_report_email(results, report_to)
+        sent = send_email(service, mime_message)
+        print(f"Report emailed (message id: {sent['id']})")
+    else:
+        print("No jobs found in this run's email(s) — nothing to report, marking them read.")
 
-    email_ids = sorted({r["email_id"] for r in results if r.get("email_id")})
     for email_id in email_ids:
         mark_as_read(service, email_id)
         print(f"Marked original email {email_id} as read")

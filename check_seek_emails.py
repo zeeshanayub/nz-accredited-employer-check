@@ -38,13 +38,13 @@ SNIPPETS_FILE = os.path.join(SCRIPT_DIR, "seek_snippets.txt")
 EML_DIR = os.path.join(SCRIPT_DIR, "seek_emails_eml")
 HTML_DIR = os.path.join(SCRIPT_DIR, "seek_emails_html")
 JOBS_FILE = os.path.join(SCRIPT_DIR, "seek_jobs.jsonl")
+PROCESSED_EMAILS_FILE = os.path.join(SCRIPT_DIR, "seek_processed_email_ids.json")
 
 SENDER_EMAIL = "noreply@s.seek.co.nz"
-SENDER_NAME_MATCH = "SEEK Recommendations"
 
-# Gmail search query: unread + from this address.
-# (Gmail search doesn't let us filter on the display name directly, so we
-# double-check that part in Python after fetching the messages.)
+# Gmail search query: every unread message from this address, regardless
+# of sender display name or subject — job extraction below naturally
+# no-ops for any email that doesn't contain job listings.
 GMAIL_QUERY = f'is:unread from:{SENDER_EMAIL}'
 
 
@@ -275,8 +275,15 @@ def save_jobs(job_records, output_file=JOBS_FILE):
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def save_processed_email_ids(email_ids, output_file=PROCESSED_EMAILS_FILE):
+    """Record every email this run fetched, so all of them get marked read —
+    including ones with no extractable job listings, not just ones with jobs."""
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(email_ids, f)
+
+
 def find_unread_seek_recommendations(service, max_results=25):
-    """Return unread emails from SEEK where the sender name matches."""
+    """Return every unread email from SENDER_EMAIL."""
     matches = []
     page_token = None
 
@@ -309,20 +316,19 @@ def find_unread_seek_recommendations(service, max_results=25):
             headers = payload.get("headers", [])
             from_header = get_header(headers, "From")
 
-            if SENDER_NAME_MATCH.lower() in from_header.lower():
-                plain_text, html_text = get_message_parts(payload)
-                matches.append(
-                    {
-                        "id": message["id"],
-                        "threadId": message["threadId"],
-                        "from": from_header,
-                        "subject": get_header(headers, "Subject"),
-                        "date": get_header(headers, "Date"),
-                        "snippet": decode_snippet(message),
-                        "body": plain_text or html_to_text(html_text),
-                        "html": html_text,
-                    }
-                )
+            plain_text, html_text = get_message_parts(payload)
+            matches.append(
+                {
+                    "id": message["id"],
+                    "threadId": message["threadId"],
+                    "from": from_header,
+                    "subject": get_header(headers, "Subject"),
+                    "date": get_header(headers, "Date"),
+                    "snippet": decode_snippet(message),
+                    "body": plain_text or html_to_text(html_text),
+                    "html": html_text,
+                }
+            )
 
         page_token = response.get("nextPageToken")
         if not page_token:
@@ -360,6 +366,7 @@ def main():
         print("No unread SEEK Recommendations emails found.")
         save_jobs([])
         print(f"Job listings saved to {JOBS_FILE}")
+        save_processed_email_ids([])
         return
 
     print(f"Found {len(matches)} unread SEEK Recommendations email(s):\n")
@@ -391,6 +398,8 @@ def main():
 
     save_jobs(all_job_records)
     print(f"\nJob listings saved to {JOBS_FILE}")
+
+    save_processed_email_ids([m["id"] for m in matches])
 
 
 if __name__ == "__main__":

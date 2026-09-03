@@ -13,5 +13,10 @@ report_to.txt
 seek_snippets.txt
 seek_jobs.jsonl
 seek_accreditation_check.json
+seek_processed_email_ids.json
 seek_emails_eml/
 seek_emails_html/
+
+# macOS
+.DS_Store
+screenshots/

@@ -77,7 +77,11 @@ def check_company(company, cache):
 def main():
     jobs = load_jobs()
     if not jobs:
-        print(f"No jobs found in {JOBS_FILE}. Run check_seek_emails.py first.")
+        print(f"No jobs found in {JOBS_FILE}.")
+        # Overwrite any stale results from a previous run — otherwise
+        # send_accreditation_report.py would re-send an old report.
+        with open(RESULTS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
         return
 
     cache = {}

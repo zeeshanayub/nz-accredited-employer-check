@@ -350,8 +350,16 @@ def main():
     service = get_gmail_service()
     matches = find_unread_seek_recommendations(service)
 
+    # Always overwrite both output files, even when there are zero matches —
+    # otherwise a stale file from a previous run gets silently re-processed
+    # by check_accreditation.py as if it were fresh.
+    save_snippets_to_file(matches)
+    print(f"Snippets saved to {SNIPPETS_FILE}")
+
     if not matches:
         print("No unread SEEK Recommendations emails found.")
+        save_jobs([])
+        print(f"Job listings saved to {JOBS_FILE}")
         return
 
     print(f"Found {len(matches)} unread SEEK Recommendations email(s):\n")
@@ -362,9 +370,6 @@ def main():
         print(f"  Snippet: {m['snippet']}")
         print(f"  Link:    https://mail.google.com/mail/u/0/#inbox/{m['id']}")
         print()
-
-    save_snippets_to_file(matches)
-    print(f"Snippets saved to {SNIPPETS_FILE}")
 
     all_job_records = []
 
@@ -384,9 +389,8 @@ def main():
                     print(f"    {job['link']}")
                 all_job_records.extend(build_job_records(jobs, m))
 
-    if all_job_records:
-        save_jobs(all_job_records)
-        print(f"\nJob listings saved to {JOBS_FILE}")
+    save_jobs(all_job_records)
+    print(f"\nJob listings saved to {JOBS_FILE}")
 
 
 if __name__ == "__main__":

@@ -6,18 +6,65 @@ If a company name contains "Ltd" and isn't found, retries once with "Ltd"
 replaced by "Limited" (the immigration site's search wants the full form).
 """
 
+import csv
+import hashlib
 import json
 import os
 import re
 import time
+from datetime import datetime
 
 from accredited_employer_api import check_employer_accredited
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JOBS_FILE = os.path.join(SCRIPT_DIR, "seek_jobs.jsonl")
 RESULTS_FILE = os.path.join(SCRIPT_DIR, "seek_accreditation_check.json")
+PROCESSED_JOBS_CSV = os.path.join(SCRIPT_DIR, "processed_jobs.csv")
+
+CSV_FIELDS = [
+    "job_id",
+    "first_seen",
+    "job_title",
+    "company",
+    "accredited",
+    "matched_employer_name",
+    "accreditation_expiry",
+    "email_id",
+    "email_subject",
+]
 
 LTD_PATTERN = re.compile(r"\bLtd\.?\b", re.IGNORECASE)
+
+
+def make_job_id(title, company):
+    """Stable ID for a job, independent of SEEK's per-email tracking links.
+
+    SEEK wraps the same job's link differently in every email it's mentioned
+    in, so the link can't be used as an identity — hash the normalized
+    title+company instead.
+    """
+    key = f"{title.strip().lower()}|{company.strip().lower()}"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+
+def load_processed_job_ids(csv_file=PROCESSED_JOBS_CSV):
+    if not os.path.exists(csv_file):
+        return set()
+
+    with open(csv_file, "r", encoding="utf-8", newline="") as f:
+        return {row["job_id"] for row in csv.DictReader(f)}
+
+
+def append_processed_jobs(rows, csv_file=PROCESSED_JOBS_CSV):
+    if not rows:
+        return
+
+    file_exists = os.path.exists(csv_file)
+    with open(csv_file, "a", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerows(rows)
 
 
 def load_jobs(jobs_file=JOBS_FILE):
@@ -84,31 +131,62 @@ def main():
             json.dump([], f)
         return
 
+    seen_job_ids = load_processed_job_ids()
     cache = {}
     output = []
+    new_csv_rows = []
+    skipped = 0
 
     for job in jobs:
         company = job.get("company", "").strip()
-        if not company:
+        title = job.get("job_title", "").strip()
+        if not company or not title:
             continue
+
+        job_id = make_job_id(title, company)
+        if job_id in seen_job_ids:
+            skipped += 1
+            continue
+        seen_job_ids.add(job_id)  # also dedupes repeats within this same run
 
         is_new_company = company not in cache
         result = check_company(company, cache)
-        output.append({**job, **result})
+        job_with_id = {**job, "job_id": job_id}
+        output.append({**job_with_id, **result})
 
         status = "ACCREDITED" if result["accredited"] else "not found"
         detail = f' (as "{result["matched_employer_name"]}")' if result["accredited"] else ""
-        print(f"- {job.get('job_title', '?')} @ {company}: {status}{detail}")
+        print(f"- {title} @ {company}: {status}{detail}")
+
+        new_csv_rows.append(
+            {
+                "job_id": job_id,
+                "first_seen": datetime.now().isoformat(timespec="seconds"),
+                "job_title": title,
+                "company": company,
+                "accredited": result["accredited"],
+                "matched_employer_name": result["matched_employer_name"] or "",
+                "accreditation_expiry": result["accreditation_expiry"] or "",
+                "email_id": job.get("email_id", ""),
+                "email_subject": job.get("email_subject", ""),
+            }
+        )
 
         if is_new_company:
             time.sleep(0.5)
 
+    if skipped:
+        print(f"\nSkipped {skipped} job(s) already seen in a previous run.")
+
     with open(RESULTS_FILE, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
 
+    append_processed_jobs(new_csv_rows)
+
     accredited_count = sum(1 for r in output if r["accredited"])
-    print(f"\n{accredited_count}/{len(output)} job(s) at accredited employers.")
+    print(f"\n{accredited_count}/{len(output)} new job(s) at accredited employers.")
     print(f"Saved results to {RESULTS_FILE}")
+    print(f"Appended {len(new_csv_rows)} new job(s) to {PROCESSED_JOBS_CSV}")
 
 
 if __name__ == "__main__":

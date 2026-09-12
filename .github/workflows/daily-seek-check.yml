@@ -7,6 +7,9 @@ on:
     - cron: '0 5 * * *'  # 10:00 PKT
   workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
 
+permissions:
+  contents: write   # needed to commit processed_jobs.csv back to the repo
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -28,3 +31,15 @@ jobs:
           GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
           REPORT_TO_EMAIL: ${{ secrets.REPORT_TO_EMAIL }}
         run: python run_pipeline.py
+
+      - name: Commit updated processed_jobs.csv
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain -- processed_jobs.csv)" ]; then
+            git add processed_jobs.csv
+            git commit -m "Update processed_jobs.csv [skip ci]"
+            git push
+          else
+            echo "No changes to processed_jobs.csv"
+          fi
